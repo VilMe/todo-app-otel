@@ -1,0 +1,35 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: todo_db
+      MYSQL_USER: todouser
+      MYSQL_PASSWORD: todopass
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  tomcat:
+    build:
+      context: .
+      dockerfile: Dockerfile.tomcat
+    depends_on:
+      - mysql
+    ports:
+      - "8080:8080"
+
+  python-scripts:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    depends_on:
+      - tomcat
+    entrypoint: ["sleep", "infinity"]
+    volumes:
+      - ./todo_api_client.py:/app/todo_api_client.py
+
+volumes:
+  db_data:
