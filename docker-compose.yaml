@@ -1,7 +1,8 @@
-version: '3.8'
+
 services:
   mysql:
     image: mysql:8.0
+    container_name: todo_mysql
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_DATABASE: todo_db
@@ -9,27 +10,42 @@ services:
       MYSQL_PASSWORD: todopass
     volumes:
       - db_data:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 10
 
   tomcat:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile.tomcat
+    container_name: todo_tomcat
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: todo_db
+      DB_USER: todouser
+      DB_PASSWORD: todopass
     ports:
       - "8080:8080"
+    restart: always
 
   python-scripts:
     build:
-      context: .
+      context: ./python-scripts
       dockerfile: Dockerfile.python
+    container_name: todo_python
     depends_on:
       - tomcat
     entrypoint: ["sleep", "infinity"]
     volumes:
-      - ./todo_api_client.py:/app/todo_api_client.py
+      - ./python-scripts/todo_api_client.py:/app/todo_api_client.py
 
 volumes:
   db_data:
