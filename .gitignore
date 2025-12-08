@@ -34,3 +34,8 @@ build/
 .gradletasknamecache
 gradle-app.setting
 !gradle-wrapper.jar
+
+##############################
+## Visual Studio Code
+##############################
+.vscode/
