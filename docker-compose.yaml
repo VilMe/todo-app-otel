@@ -43,7 +43,7 @@ services:
     container_name: todo_python
     depends_on:
       - tomcat
-    entrypoint: ["sleep", "infinity"]
+    entrypoint: ["python", "todo_api_client.py"]
     volumes:
       - ./python-scripts/todo_api_client.py:/app/todo_api_client.py
 
