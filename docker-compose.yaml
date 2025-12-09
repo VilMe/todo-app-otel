@@ -27,11 +27,11 @@ services:
       mysql:
         condition: service_healthy
     environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: todo_db
-      DB_USER: todouser
-      DB_PASSWORD: todopass
+        - DB_HOST=mysql
+        - DB_PORT=3306
+        - DB_NAME=todo_db
+        - DB_USER=todouser
+        - DB_PASSWORD=todopass
     ports:
       - "8080:8080"
     restart: always
@@ -43,7 +43,7 @@ services:
     container_name: todo_python
     depends_on:
       - tomcat
-    entrypoint: ["sleep", "infinity"]
+    entrypoint: ["python", "todo_api_client.py"]
     volumes:
       - ./python-scripts/todo_api_client.py:/app/todo_api_client.py
 
