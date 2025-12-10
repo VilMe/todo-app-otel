@@ -13,7 +13,6 @@ public class TodoServlet extends HttpServlet {
     public void init() throws ServletException {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
-            // Use environment variables if available, fallback to default
             String dbHost = System.getenv().getOrDefault("DB_HOST", "localhost");
             String dbPort = System.getenv().getOrDefault("DB_PORT", "3306");
             String dbName = System.getenv().getOrDefault("DB_NAME", "todo_db");
@@ -26,14 +25,15 @@ public class TodoServlet extends HttpServlet {
         }
     }
 
-    // GET /todos
+    // GET /todos -> returns JSON: { "todos": [...], "count": N }
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         resp.setContentType("application/json");
         PrintWriter out = resp.getWriter();
         try {
+            // fetch todos
             Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM todos");
+            ResultSet rs = stmt.executeQuery("SELECT id, description, completed FROM todos ORDER BY id ASC");
             JSONArray arr = new JSONArray();
             while(rs.next()){
                 JSONObject obj = new JSONObject();
@@ -42,16 +42,43 @@ public class TodoServlet extends HttpServlet {
                 obj.put("completed", rs.getBoolean("completed"));
                 arr.put(obj);
             }
-            out.print(arr.toString());
+            rs.close();
+            stmt.close();
+
+            // fetch count separately for accuracy/efficiency
+            int count = 0;
+            PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM todos");
+            ResultSet crs = ps.executeQuery();
+            if (crs.next()) {
+                count = crs.getInt(1);
+            }
+            crs.close();
+            ps.close();
+
+            JSONObject response = new JSONObject();
+            response.put("todos", arr);
+            response.put("count", count);
+            out.print(response.toString());
         } catch(Exception e){
             resp.setStatus(500);
-            out.print("{ \"error\": \"Server error\" }");
+            JSONObject err = new JSONObject();
+            err.put("error", "Server error");
+            err.put("detail", e.getMessage());
+            out.print(err.toString());
         }
     }
 
-    // POST /todos
+    // POST /todos (create)
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        String pathInfo = req.getPathInfo(); // null or "/..."
+        // Only support POST /todos to create (no other POST endpoints)
+        if (pathInfo != null && !pathInfo.equals("/")) {
+            resp.setStatus(404);
+            resp.getWriter().print("{\"error\":\"Not found\"}");
+            return;
+        }
+
         String body = readRequestBody(req);
         try {
             JSONObject obj = new JSONObject(body);
@@ -59,17 +86,18 @@ public class TodoServlet extends HttpServlet {
             PreparedStatement ps = conn.prepareStatement("INSERT INTO todos (description) VALUES (?)");
             ps.setString(1, desc);
             ps.executeUpdate();
+            ps.close();
             resp.setStatus(201);
         } catch(Exception e){
             resp.setStatus(400);
-            resp.getWriter().print("{\"error\":\"Bad Request\"}");
+            resp.getWriter().print("{\"error\":\"Bad Request\",\"detail\":\"" + e.getMessage() + "\"}");
         }
     }
 
     // PUT /todos/{id}
     @Override
     protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String pathInfo = req.getPathInfo(); // e.g., "/3"
+        String pathInfo = req.getPathInfo(); // e.g. "/3"
         if (pathInfo == null || pathInfo.length() <= 1) {
             resp.setStatus(400);
             resp.getWriter().print("{\"error\":\"Missing id\"}");
@@ -86,26 +114,28 @@ public class TodoServlet extends HttpServlet {
         String body = readRequestBody(req);
         try {
             JSONObject obj = new JSONObject(body);
-            String description = obj.optString("description", null);
+            String description = obj.has("description") ? obj.getString("description") : null;
             Boolean completed = obj.has("completed") ? obj.getBoolean("completed") : null;
 
-            String sql = "UPDATE todos SET ";
-            boolean setDesc = description != null, setComp = completed != null;
-            if (!setDesc && !setComp) {
-                resp.setStatus(400);
-                resp.getWriter().print("{\"error\":\"Nothing to update\"}");
-                return;
+            StringBuilder sql = new StringBuilder("UPDATE todos SET ");
+            boolean first = true;
+            if (description != null) {
+                sql.append("description=?");
+                first = false;
             }
-            if (setDesc) sql += "description=?";
-            if (setDesc && setComp) sql += ", ";
-            if (setComp) sql += "completed=?";
-            sql += " WHERE id=?";
-            PreparedStatement ps = conn.prepareStatement(sql);
+            if (completed != null) {
+                if (!first) sql.append(", ");
+                sql.append("completed=?");
+            }
+            sql.append(" WHERE id=?");
+
+            PreparedStatement ps = conn.prepareStatement(sql.toString());
             int idx = 1;
-            if (setDesc) ps.setString(idx++, description);
-            if (setComp) ps.setBoolean(idx++, completed);
+            if (description != null) ps.setString(idx++, description);
+            if (completed != null) ps.setBoolean(idx++, completed);
             ps.setInt(idx, id);
             int res = ps.executeUpdate();
+            ps.close();
             if (res == 0) {
                 resp.setStatus(404);
                 resp.getWriter().print("{\"error\":\"Not found\"}");
@@ -114,14 +144,14 @@ public class TodoServlet extends HttpServlet {
             }
         } catch(Exception e){
             resp.setStatus(400);
-            resp.getWriter().print("{\"error\":\"Bad Request\"}");
+            resp.getWriter().print("{\"error\":\"Bad Request\",\"detail\":\"" + e.getMessage() + "\"}");
         }
     }
 
     // DELETE /todos/{id}
     @Override
     protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String pathInfo = req.getPathInfo(); // e.g., "/3"
+        String pathInfo = req.getPathInfo();
         if (pathInfo == null || pathInfo.length() <= 1) {
             resp.setStatus(400);
             resp.getWriter().print("{\"error\":\"Missing id\"}");
@@ -139,6 +169,7 @@ public class TodoServlet extends HttpServlet {
             PreparedStatement ps = conn.prepareStatement("DELETE FROM todos WHERE id=?");
             ps.setInt(1, id);
             int res = ps.executeUpdate();
+            ps.close();
             if (res == 0) {
                 resp.setStatus(404);
                 resp.getWriter().print("{\"error\":\"Not found\"}");
@@ -147,7 +178,7 @@ public class TodoServlet extends HttpServlet {
             }
         } catch(Exception e) {
             resp.setStatus(400);
-            resp.getWriter().print("{\"error\":\"Bad Request\"}");
+            resp.getWriter().print("{\"error\":\"Bad Request\",\"detail\":\"" + e.getMessage() + "\"}");
         }
     }
 
