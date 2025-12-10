@@ -25,59 +25,39 @@ public class TodoServlet extends HttpServlet {
         }
     }
 
-    // GET /todos -> returns JSON: { "todos": [...], "count": N, "last_modified": "ISO-8601" }
+    // GET /todos -> returns JSON: { "todos": [...], "count": N }
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        resp.setContentType("application/json;charset=UTF-8");
+        resp.setContentType("application/json");
         PrintWriter out = resp.getWriter();
         try {
-            // fetch todos with last_modified
-            PreparedStatement listStmt = conn.prepareStatement("SELECT id, description, completed, last_modified FROM todos ORDER BY id ASC");
-            ResultSet rs = listStmt.executeQuery();
+            // fetch todos
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT id, description, completed FROM todos ORDER BY id ASC");
             JSONArray arr = new JSONArray();
             while(rs.next()){
                 JSONObject obj = new JSONObject();
                 obj.put("id", rs.getInt("id"));
                 obj.put("description", rs.getString("description"));
                 obj.put("completed", rs.getBoolean("completed"));
-                Timestamp ts = rs.getTimestamp("last_modified");
-                if (ts != null) {
-                    obj.put("last_modified", ts.toInstant().toString());
-                } else {
-                    obj.put("last_modified", JSONObject.NULL);
-                }
                 arr.put(obj);
             }
             rs.close();
-            listStmt.close();
+            stmt.close();
 
-            // fetch count
+            // fetch count separately for accuracy/efficiency
             int count = 0;
-            PreparedStatement countStmt = conn.prepareStatement("SELECT COUNT(*) FROM todos");
-            ResultSet crs = countStmt.executeQuery();
+            PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM todos");
+            ResultSet crs = ps.executeQuery();
             if (crs.next()) {
                 count = crs.getInt(1);
             }
             crs.close();
-            countStmt.close();
-
-            // fetch overall last_modified (most recent)
-            String overallLastModified = null;
-            PreparedStatement maxStmt = conn.prepareStatement("SELECT MAX(last_modified) FROM todos");
-            ResultSet mrs = maxStmt.executeQuery();
-            if (mrs.next()) {
-                Timestamp mts = mrs.getTimestamp(1);
-                if (mts != null) overallLastModified = mts.toInstant().toString();
-            }
-            mrs.close();
-            maxStmt.close();
+            ps.close();
 
             JSONObject response = new JSONObject();
             response.put("todos", arr);
             response.put("count", count);
-            if (overallLastModified != null) response.put("last_modified", overallLastModified);
-            else response.put("last_modified", JSONObject.NULL);
-
             out.print(response.toString());
         } catch(Exception e){
             resp.setStatus(500);
@@ -160,7 +140,6 @@ public class TodoServlet extends HttpServlet {
                 resp.setStatus(404);
                 resp.getWriter().print("{\"error\":\"Not found\"}");
             } else {
-                // last_modified is updated automatically by DB (see schema)
                 resp.setStatus(200);
             }
         } catch(Exception e){
