@@ -5,6 +5,17 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  mysql:
+    endpoint: mysql:3306
+    username: todouser
+    password: todopass
+    database: todo_db
+    collection_interval: 10s
+    initial_delay: 1s
+    statement_events:
+      digest_text_limit: 120
+      time_limit: 24h
+      limit: 250
 
 processors:
   batch:
@@ -33,6 +44,11 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug,otlp,prometheus]
+    
+    metrics/2:
+      receivers: [mysql]
+      processors: [batch]
+      exporters: [prometheus]
 
     logs:
       receivers: [otlp]
