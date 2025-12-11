@@ -43,7 +43,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug,otlp,prometheus]
+      exporters: [debug,prometheus]
     
     metrics/2:
       receivers: [mysql]
